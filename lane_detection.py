@@ -29,30 +29,47 @@ class Canny_edge_lane:
         cv2.fillPoly(mask, vertices, 255)
         roi_frame = cv2.bitwise_and(frame, mask)
         return roi_frame
-    def hough(self, frame):
+    def hough(self, frame, min_deg, max_deg):
         h, w = frame.shape
         lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi/180, threshold=50, minLineLength=10, maxLineGap=30)
         line_img = np.zeros((h, w, 3), dtype=np.uint8)
-        for line in lines:
-            for x1, y1, x2, y2 in line:
-                # color : [B, G, R]
-                cv2.line(line_img, (x1, y1), (x2, y2), color=[255, 0, 0], thickness=2)
+        lines, deg = self.lines_wanted(lines, min_deg, max_deg)
+        print(lines, deg)
+        for x1, y1, x2, y2 in lines:
+        # for line in lines:
+        # for x1, y1, x2, y2 in line:
+            # color : [B, G, R]
+            cv2.line(line_img, (x1, y1), (x2, y2), color=[255, 0, 0], thickness=2)
         return line_img
+
+    def lines_wanted(self, lines, min_deg, max_deg):
+        lines = np.squeeze(lines)
+        theta_deg = np.abs(np.rad2deg(np.arctan2(lines[:, 1] - lines[:, 3], lines[:, 0] - lines[:, 2])))
+        lines = lines[np.abs(theta_deg) < max_deg]
+        theta_deg = theta_deg[np.abs(theta_deg) < max_deg]
+        lines = lines[np.abs(theta_deg) > min_deg]
+        theta_deg = theta_deg[np.abs(theta_deg) > min_deg]
+
+        # np.append(lines_new, lines_new[np.abs(theta_deg) > 30])
+        # np.append(lines_new, lines[np.abs(theta_deg) > 110])
+        # np.append(lines_new, lines_new[np.abs(theta_deg) > 30])
+        return lines, theta_deg
 
     def control_hough_lines(self, line):
         return 0
 
-    # def onChange(self, x):
-    #     pass
+    def onChange(self, x):
+        pass
     def open_vid(self):
         count = 0
         # cv2.namedWindow('canny')
         # cv2.createTrackbar('low_T', 'canny', 0, 255, self.onChange)
         # cv2.createTrackbar('high_T', 'canny', 0, 255, self.onChange)
 
-        # cv2.namedWindow('canny')
-        # cv2.createTrackbar('low_T', 'canny', 0, 255, self.onChange)
-        # cv2.createTrackbar('high_T', 'canny', 0, 255, self.onChange)
+        cv2.namedWindow('deg_cont')
+        cv2.createTrackbar('min_deg', 'deg_cont', 0, 180, self.onChange)
+        cv2.createTrackbar('max_deg', 'deg_cont', 0, 180, self.onChange)
+
         while True:
             # 동영상 파일 존재 여부(True/False)와 현재 프레임 이미지를 읽음
             retval, frame = self.cap.read()
@@ -61,7 +78,7 @@ class Canny_edge_lane:
             gaussian_blur_frame = self.gaussian_blur(gray_frame, kernel_size=3)
             canny_frame = self.canny(gaussian_blur_frame, low_t=130, high_t=200)
             roi_frame = self.roi(canny_frame)
-            hough_frame = self.hough(roi_frame)
+            # hough_frame = self.hough(roi_frame)
 
             # 만약 동영상 파일이 존재하지 않으면 while 반복문 종료
             if retval == False:
@@ -93,7 +110,11 @@ class Canny_edge_lane:
             elif count == 4:
                 cv2.imshow('road_driving', roi_frame)
             elif count == 5:
-                cv2.imshow('road_driving', hough_frame)
+                min_deg = cv2.getTrackbarPos('min_deg', 'deg_cont')
+                max_deg = cv2.getTrackbarPos('max_deg', 'deg_cont')
+                hough_frame = self.hough(roi_frame, min_deg, max_deg)
+
+                cv2.imshow('deg_cont', hough_frame)
 
         # 동영상 파일 닫고 모든창 종료
         self.cap.release()
