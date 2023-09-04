@@ -18,23 +18,28 @@ class Canny_edge_lane:
         return cv2.GaussianBlur(frame, (kernel_size, kernel_size), sigmaX= 0)
 
     def canny(self, frame, low_t, high_t):
-        return cv2.Canny(frame, low_t, high_t)
+        return cv2.Canny(frame, low_t, high_t, L2gradient=True)
 
     def roi(self, frame):
         mask = np.zeros_like(frame)
         h, w = mask.shape
+        print(h, w)
         a = w * 3/10
         b = h * 3/5
-        vertices = np.array([[(0, h), (a, b), (w-a, b), (w, h)]], dtype=np.int32)
-        cv2.fillPoly(mask, vertices, 255)
+        c = w / 2
+        vertices1 = np.array([[(0, h), (a, b), (w - a, b), (w, h)]], dtype=np.int32)
+        vertices2 = np.array([[(a, h), (a, b), (w - a, b), (w - a, h)]], dtype=np.int32)
+        mask = cv2.fillPoly(mask, vertices1, 255)
+        # mask = cv2.fillPoly(mask, vertices2, 255)
         roi_frame = cv2.bitwise_and(frame, mask)
         return roi_frame
     def hough(self, frame, min_deg, max_deg):
         h, w = frame.shape
-        lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi/180, threshold=50, minLineLength=10, maxLineGap=30)
+        lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi/180, threshold=50, minLineLength=100, maxLineGap=30)
         line_img = np.zeros((h, w, 3), dtype=np.uint8)
         lines, deg = self.lines_wanted(lines, min_deg, max_deg)
-        print(lines, deg)
+        print(lines)
+        print(deg)
         for x1, y1, x2, y2 in lines:
         # for line in lines:
         # for x1, y1, x2, y2 in line:
@@ -42,9 +47,12 @@ class Canny_edge_lane:
             cv2.line(line_img, (x1, y1), (x2, y2), color=[255, 0, 0], thickness=2)
         return line_img
 
-    def lines_wanted(self, lines, min_deg=130, max_deg=180):
+    def lines_wanted(self, lines, min_deg=-50, max_deg=50):
         lines = np.squeeze(lines)
-        theta_deg = np.abs(np.rad2deg(np.arctan2(lines[:, 1] - lines[:, 3], lines[:, 0] - lines[:, 2])))
+        theta_deg = np.rad2deg(np.arctan2(lines[:, 3] - lines[:, 1], lines[:, 2] - lines[:, 0]))
+        # print(lines)
+        # print(theta_deg)
+
         lines = lines[np.abs(theta_deg) < max_deg]
         theta_deg = theta_deg[np.abs(theta_deg) < max_deg]
         lines = lines[np.abs(theta_deg) > min_deg]
@@ -54,54 +62,92 @@ class Canny_edge_lane:
         # np.append(lines_new, lines[np.abs(theta_deg) > 110])
         # np.append(lines_new, lines_new[np.abs(theta_deg) > 30])
         return lines, theta_deg
+
     def special_lines(self, frame, line_classify_count=0):
         h, w = frame.shape
         line_img = np.zeros((h, w, 3), dtype=np.uint8)
-        lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi / 180, threshold=50, minLineLength=10, maxLineGap=30)
-        lines, theta_deg = self.lines_wanted(lines, min_deg=130, max_deg=180)
+        lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi / 180, threshold=50, minLineLength=30, maxLineGap=100)
+        lines, theta_deg = self.lines_wanted(lines, min_deg=30, max_deg=140)
 
-        line_arr_1 = np.empty((1, 4), dtype=float)
-        line_arr_2 = np.empty((1, 4), dtype=float)
+        line_pos_arr = []
+        line_neg_arr = []
 
         for index in range(theta_deg.size):
+            if index < (theta_deg.size - 1):
+                if theta_deg[index] > 0:
+                    if abs(theta_deg[index] - theta_deg[index + 1]) < 10:
+                        line_pos_arr.append(lines[index])
 
-            if index <= theta_deg.size - 1:
-                if theta_deg[index] - theta_deg[index + 1] < 7:
-                    if line_classify_count == 0:
-                        np.append(line_arr_1, lines[index], axis=0)
-                        print(line_arr_1)
-                    elif line_classify_count == 1:
-                        np.append(line_arr_2, lines[index], axis=0)
+                elif theta_deg[index] < 0:
+                    if abs(theta_deg[index] - theta_deg[index + 1]) < 10:
+                        line_neg_arr.append(lines[index])
 
-                elif theta_deg[index] - theta_deg[index + 1] >= 7:
-                    line_classify_count += 1
-                    np.append(line_arr_1, theta_deg[index], axis=0)
-                    break
-        print(line_arr_1)
-        line1_x1 = line_arr_1(axis=0) / theta_deg.size
-        line1_y1 = line_arr_1(axis=1) / theta_deg.size
-        line1_x2 = line_arr_1(axis=2) / theta_deg.size
-        line1_y2 = line_arr_1(axis=3) / theta_deg.size
+            line_pos_arr = np.array(line_pos_arr)
+            line_neg_arr = np.array(line_neg_arr)
 
-        line2_x1 = line_arr_2(axis=0) / theta_deg.size
-        line2_y1 = line_arr_2(axis=1) / theta_deg.size
-        line2_x2 = line_arr_2(axis=2) / theta_deg.size
-        line2_y2 = line_arr_2(axis=3) / theta_deg.size
+            if line_pos_arr.size > 0:
+                line1_x1 = np.mean(line_pos_arr[:, 0])
+                line1_y1 = np.mean(line_pos_arr[:, 1])
+                line1_x2 = np.mean(line_pos_arr[:, 2])
+                line1_y2 = np.mean(line_pos_arr[:, 3])
 
-        # line1_x1 = np.sum(line_list_1[:, 0]) / theta_deg.size
-        # line1_y1 = np.sum(line_list_1[:, 1]) / theta_deg.size
-        # line1_x2 = np.sum(line_list_1[:, 2]) / theta_deg.size
-        # line1_y2 = np.sum(line_list_1[:, 3]) / theta_deg.size
-        #
-        # line2_x1 = np.sum(line_list_2[:, 0]) / theta_deg.size
-        # line2_y1 = np.sum(line_list_2[:, 1]) / theta_deg.size
-        # line2_x2 = np.sum(line_list_2[:, 2]) / theta_deg.size
-        # line2_y2 = np.sum(line_list_2[:, 3]) / theta_deg.size
+                cv2.line(line_img, (int(line1_x1), int(line1_y1)), (int(line1_x2), int(line1_y2)), color=[0, 0, 255],
+                         thickness=3)
 
-        cv2.line(line_img, (line1_x1, line1_y1), (line1_x2, line1_y2), color=[0, 0, 255], thickness=3)
-        cv2.line(line_img, (line2_x1, line2_y1), (line2_x2, line2_y2), color=[0, 255, 0], thickness=3)
+            if line_neg_arr.size > 0:
+                line2_x1 = np.mean(line_neg_arr[:, 0])
+                line2_y1 = np.mean(line_neg_arr[:, 1])
+                line2_x2 = np.mean(line_neg_arr[:, 2])
+                line2_y2 = np.mean(line_neg_arr[:, 3])
 
+                cv2.line(line_img, (int(line2_x1), int(line2_y1)), (int(line2_x2), int(line2_y2)), color=[0, 255, 0],
+                         thickness=3)
         return line_img
+
+    # def special_lines(self, frame, line_classify_count=0): # def hough 참고
+    #     h, w = frame.shape
+    #     line_img = np.zeros((h, w, 3), dtype=np.uint8)
+    #     lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi / 180, threshold=50, minLineLength=30, maxLineGap=100)
+    #     lines, theta_deg = self.lines_wanted(lines, min_deg=30, max_deg=140)
+    #
+    #     line_pos_arr = np.empty((1, 4), dtype=float)
+    #     line_neg_arr = np.empty((1, 4), dtype=float)
+    #
+    #     for index in range(theta_deg.size):
+    #         if theta_deg[index] > 0:
+    #             if abs(theta_deg[index] - theta_deg[index + 1]) < 10:
+    #                 np.append(line_pos_arr, lines[index], axis=0)
+    #                 print(line_pos_arr)
+    #
+    #         elif theta_deg[index] < 0:
+    #             if abs(theta_deg[index] - theta_deg[index + 1]) < 10:
+    #                 np.append(line_neg_arr, lines[index], axis=0)
+    #                 print(line_neg_arr)
+    #
+    #     line1_x1 = line_pos_arr.sum(axis=0) / line_pos_arr.size
+    #     line1_y1 = line_pos_arr.sum(axis=1) / line_pos_arr.size
+    #     line1_x2 = line_pos_arr.sum(axis=2) / line_pos_arr.size
+    #     line1_y2 = line_pos_arr.sum(axis=3) / line_pos_arr.size
+    #
+    #     line2_x1 = line_neg_arr.sum(axis=0) / line_neg_arr.size
+    #     line2_y1 = line_neg_arr.sum(axis=1) / line_neg_arr.size
+    #     line2_x2 = line_neg_arr.sum(axis=2) / line_neg_arr.size
+    #     line2_y2 = line_neg_arr.sum(axis=3) / line_neg_arr.size
+    #
+    #     # line1_x1 = np.sum(line_list_1[:, 0]) / theta_deg.size
+    #     # line1_y1 = np.sum(line_list_1[:, 1]) / theta_deg.size
+    #     # line1_x2 = np.sum(line_list_1[:, 2]) / theta_deg.size
+    #     # line1_y2 = np.sum(line_list_1[:, 3]) / theta_deg.size
+    #     #
+    #     # line2_x1 = np.sum(line_list_2[:, 0]) / theta_deg.size
+    #     # line2_y1 = np.sum(line_list_2[:, 1]) / theta_deg.size
+    #     # line2_x2 = np.sum(line_list_2[:, 2]) / theta_deg.size
+    #     # line2_y2 = np.sum(line_list_2[:, 3]) / theta_deg.size
+    #
+    #     cv2.line(line_img, (line1_x1, line1_y1), (line1_x2, line1_y2), color=[0, 0, 255], thickness=3)
+    #     cv2.line(line_img, (line2_x1, line2_y1), (line2_x2, line2_y2), color=[0, 255, 0], thickness=3)
+    #
+    #     return line_img
 
     # Trackbar 생성을 위한 pass 함수
     # def onChange(self, x):
@@ -161,7 +207,7 @@ class Canny_edge_lane:
             elif count == 5:
                 # min_deg = cv2.getTrackbarPos('min_deg', 'deg_cont')
                 # max_deg = cv2.getTrackbarPos('max_deg', 'deg_cont')
-                hough_frame = self.hough(roi_frame, min_deg=130, max_deg=180)
+                hough_frame = self.hough(roi_frame, min_deg=20, max_deg=140)
 
                 # cv2.imshow('deg_cont', hough_frame)
                 cv2.imshow('road_driving', hough_frame)
@@ -176,7 +222,9 @@ class Canny_edge_lane:
         cv2.destroyAllWindows()
 
 def main():
-    vid_name = 'highway.mp4'
+    vid_name = 'highway.mp4' # 1280x720 & 12s
+    # vid_name = 'highway2.mp4' # 3840x2160
+    # vid_name = 'highway3.mp4' # 1280x720 & 14s
     vid_path = 'C:/Users/강두인/Downloads/' + vid_name
     cap = cv2.VideoCapture(vid_path)
 
