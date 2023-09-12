@@ -23,22 +23,26 @@ class Canny_edge_lane:
     def roi(self, frame):
         mask = np.zeros_like(frame)
         h, w = mask.shape
-        print(h, w)
         a = w * 3/10
         b = h * 3/5
-        c = w / 2
-        vertices1 = np.array([[(0, h), (a, b), (w - a, b), (w, h)]], dtype=np.int32)
-        vertices2 = np.array([[(a, h), (a, b), (w - a, b), (w - a, h)]], dtype=np.int32)
-        mask = cv2.fillPoly(mask, vertices1, 255)
+        c = w / 10
+        vertices1 = np.array([[(0, h), (a, b), (a + c, b), (a + c, h)]], dtype=np.int32)
+        vertices2 = np.array([[(w - (a + c), h), (w - (a + c), b), (w - a, b), (w, h)]], dtype=np.int32)
+        vertices = np.append(vertices1, vertices2, axis=0)
+        # print('ver1: ', vertices1)
+        # print('ver: ', vertices)
+        # vertices2 = np.array([[(a, h), (a, b), (w - a, b), (w - a, h)]], dtype=np.int32)
+        mask = cv2.fillPoly(mask, vertices, 255)
         # mask = cv2.fillPoly(mask, vertices2, 255)
         roi_frame = cv2.bitwise_and(frame, mask)
         return roi_frame
     def hough(self, frame, min_deg, max_deg):
         h, w = frame.shape
-        lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi/180, threshold=50, minLineLength=100, maxLineGap=30)
+        print('h, w: ', h, w)
+        lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi/180, threshold=50, minLineLength=10, maxLineGap=300)
         line_img = np.zeros((h, w, 3), dtype=np.uint8)
         lines, deg = self.lines_wanted(lines, min_deg, max_deg)
-        print(lines)
+        print('line: ', lines)
         print(deg)
         for x1, y1, x2, y2 in lines:
         # for line in lines:
@@ -66,7 +70,7 @@ class Canny_edge_lane:
     def special_lines(self, frame, line_classify_count=0):
         h, w = frame.shape
         line_img = np.zeros((h, w, 3), dtype=np.uint8)
-        lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi/180, threshold=50, minLineLength=100, maxLineGap=30)
+        lines = cv2.HoughLinesP(frame, rho=1, theta=np.pi/180, threshold=50, minLineLength=10, maxLineGap=300)
         lines, theta_deg = self.lines_wanted(lines, min_deg=-50, max_deg=50)
 
         line_pos_arr = np.empty((0, 4), float)
@@ -109,12 +113,21 @@ class Canny_edge_lane:
 
         line_pos_arr = np.unique(line_pos_arr, axis=0)
         line_neg_arr = np.unique(line_neg_arr, axis=0)
-        pos_x1, pos_y1, pos_x2, pos_y2 = line_pos_arr.sum(axis=0)
-        neg_x1, neg_y1, neg_x2, neg_y2 = line_neg_arr.sum(axis=0)
-        cv2.line(line_img, (int(pos_x1), int(pos_y1)), (int(pos_x2), int(pos_y2)), color=[255, 0, 0],
-                 thickness=3)
-        cv2.line(line_img, (int(neg_x1), int(neg_y1)), (int(neg_x2), int(neg_y2)), color=[0, 0, 255],
-                 thickness=3)
+        # print('line_pos_array: ', line_pos_arr)
+        pos_x1, pos_y1, pos_x2, pos_y2 = np.mean(line_pos_arr, axis=0)
+        neg_x1, neg_y1, neg_x2, neg_y2 = np.mean(line_neg_arr, axis=0)
+        try:
+            cv2.line(line_img, (int(pos_x1), int(pos_y1)), (int(pos_x2), int(pos_y2)), color=[255, 0, 0],
+                     thickness=3)
+        except ValueError:
+            pass
+
+        try:
+            cv2.line(line_img, (int(neg_x1), int(neg_y1)), (int(neg_x2), int(neg_y2)), color=[0, 0, 255],
+                     thickness=3)
+        except ValueError:
+            pass
+
         return line_img
 
     # def special_lines(self, frame, line_classify_count=0):
@@ -217,13 +230,11 @@ class Canny_edge_lane:
             elif count == 5:
                 # min_deg = cv2.getTrackbarPos('min_deg', 'deg_cont')
                 # max_deg = cv2.getTrackbarPos('max_deg', 'deg_cont')
-                hough_frame = self.hough(roi_frame, min_deg=20, max_deg=140)
-
+                hough_frame = self.hough(roi_frame, min_deg=-50, max_deg=50)
                 # cv2.imshow('deg_cont', hough_frame)
                 cv2.imshow('road_driving', hough_frame)
             elif count == 6:
                 special_frame = self.special_lines(roi_frame)
-
                 # cv2.imshow('deg_cont', hough_frame)
                 cv2.imshow('road_driving', special_frame)
 

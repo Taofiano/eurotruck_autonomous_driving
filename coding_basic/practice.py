@@ -33,6 +33,7 @@ for index in range(theta_deg.size):
                 deg_pos_mean += theta_deg[index]
             else:
                 deg_pos_mean = (deg_pos_mean + theta_deg[index]) / 2
+
             if abs(deg_pos_mean - theta_deg[index + 1]) < 10:
                 line_pos_arr = np.vstack((line_pos_arr, lines[index + 1]))
             # else:
